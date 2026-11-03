@@ -1,5 +1,7 @@
 <resources>
     <string name="app_name">Telegram WS Proxy</string>
+    <string name="shortcut_start_proxy">Start proxy</string>
+    <string name="shortcut_stop_proxy">Stop proxy</string>
     <string name="status_connecting">Connecting</string>
     <string name="status_connected">Connected</string>
     <string name="status_disconnected">Disconnected</string>

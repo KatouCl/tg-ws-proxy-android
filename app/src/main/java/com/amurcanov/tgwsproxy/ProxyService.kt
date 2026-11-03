@@ -31,6 +31,8 @@ class ProxyService : Service() {
     private var notificationStartedAtMs: Long = 0L
     @Volatile
     private var stopInProgress = false
+    @Volatile
+    private var startInProgress = false
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     // Saved intent extras for restart on kill / onTaskRemoved
@@ -59,6 +61,8 @@ class ProxyService : Service() {
         private const val NOTIFICATION_ID = 101
         private const val CHANNEL_ID = "TG_WS_Proxy_Service_v4"
         private const val TAG = "ProxyService"
+        // Shared across service instances: STOP must never overtake native startup.
+        private val nativeLifecycleLock = Any()
 
         // Wakelock refresh interval (25 min, re-acquire before 30-min timeout)
         private const val WAKELOCK_TIMEOUT_MS = 30L * 60 * 1000
@@ -96,6 +100,7 @@ class ProxyService : Service() {
             }
             ACTION_STOP -> {
                 stopProxy()
+                return START_NOT_STICKY
             }
             ACTION_RESTART -> {
                 restartProxy()
@@ -133,7 +138,8 @@ class ProxyService : Service() {
     private fun startProxy(bindIp: String, port: Int, ips: String, poolSize: Int = 4,
                            cfEnabled: Boolean = true, cfPriority: Boolean = true,
                            cfDomain: String = "", secretKey: String = "") {
-        if (_isRunning.value || stopInProgress) return
+        if (_isRunning.value || startInProgress || stopInProgress) return
+        startInProgress = true
         _isVerifiedRunning.value = false
 
         // Save params for restart
@@ -163,7 +169,7 @@ class ProxyService : Service() {
         acquireWakeLock()
         stopInProgress = false
         
-        // Start Go proxy in a separate thread with error handling
+        // Start Rust proxy in a separate thread with error handling
         Thread({
             val canObtainPort = isPortAvailable(bindIp, port)
             if (!canObtainPort) {
@@ -177,14 +183,18 @@ class ProxyService : Service() {
             }
 
             try {
-                NativeProxy.setPoolSize(poolSize)
-                NativeProxy.setCfProxyCacheDir(cacheDir.absolutePath)
-                NativeProxy.setCfProxyConfig(cfEnabled, cfPriority, cfDomain)
-                val result = NativeProxy.startProxy(bindIp, port, ips, secretKey, 1)
+                val result = synchronized(nativeLifecycleLock) {
+                    if (stopInProgress) return@Thread
+                    NativeProxy.setPoolSize(poolSize)
+                    NativeProxy.setCfProxyCacheDir(cacheDir.absolutePath)
+                    NativeProxy.setCfProxyConfig(cfEnabled, cfPriority, cfDomain)
+                    NativeProxy.startProxy(bindIp, port, ips, secretKey, 1)
+                }
                 if (result == 0) {
                     serviceScope.launch {
                         if (!stopInProgress) {
                             updateRunningState(true)
+                            startInProgress = false
                             _isVerifiedRunning.value = true
                             updateNotification(getString(R.string.notification_running), force = true)
                             Log.i(TAG, "Proxy ready: listening on port $port")
@@ -276,6 +286,7 @@ class ProxyService : Service() {
             statsJob = null
 
             requestNativeStop("restart")
+            startInProgress = false
             releaseWakeLock()
             updateRunningState(false)
             delay(350.milliseconds)
@@ -329,6 +340,7 @@ class ProxyService : Service() {
         serviceScope.launch {
             updateNotification(getString(R.string.notification_stopping), force = true)
             requestNativeStop("stop")
+            startInProgress = false
             releaseWakeLock()
             updateRunningState(false)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -345,7 +357,9 @@ class ProxyService : Service() {
         val completed = CompletableDeferred<Unit>()
         Thread({
             try {
-                NativeProxy.stopProxy()
+                synchronized(nativeLifecycleLock) {
+                    NativeProxy.stopProxy()
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "StopProxy failed during $reason", e)
             } finally {
@@ -363,8 +377,10 @@ class ProxyService : Service() {
 
         if (!finished) {
             Log.w(TAG, "Native stop is still running after ${NATIVE_STOP_WAIT_MS}ms during $reason")
+            // Keep the foreground service alive until sockets/pools are actually closed.
+            completed.await()
         }
-        return finished
+        return true
     }
 
     /**

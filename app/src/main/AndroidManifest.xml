@@ -47,7 +47,29 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
+
+        <!-- App Shortcuts require an activity target. This one never creates a window. -->
+        <activity
+            android:name=".ProxyShortcutActivity"
+            android:exported="true"
+            android:noHistory="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.ProxyShortcut" />
+
+        <!-- Explicit broadcasts also allow automation without launching any activity. -->
+        <receiver
+            android:name=".ProxyCommandReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.amurcanov.tgwsproxy.START" />
+                <action android:name="com.amurcanov.tgwsproxy.STOP" />
+            </intent-filter>
+        </receiver>
 
         <activity
             android:name="com.amurcanov.tgwsproxy.ProxyTilePreferencesActivity"

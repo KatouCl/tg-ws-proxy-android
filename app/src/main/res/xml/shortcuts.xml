@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="start_proxy"
+        android:enabled="true"
+        android:icon="@drawable/ic_stat_connected"
+        android:shortcutShortLabel="@string/shortcut_start_proxy"
+        android:shortcutLongLabel="@string/shortcut_start_proxy">
+        <intent
+            android:action="com.amurcanov.tgwsproxy.START"
+            android:targetPackage="com.amurcanov.tgwsproxy"
+            android:targetClass="com.amurcanov.tgwsproxy.ProxyShortcutActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="stop_proxy"
+        android:enabled="true"
+        android:icon="@drawable/ic_stop"
+        android:shortcutShortLabel="@string/shortcut_stop_proxy"
+        android:shortcutLongLabel="@string/shortcut_stop_proxy">
+        <intent
+            android:action="com.amurcanov.tgwsproxy.STOP"
+            android:targetPackage="com.amurcanov.tgwsproxy"
+            android:targetClass="com.amurcanov.tgwsproxy.ProxyShortcutActivity" />
+    </shortcut>
+</shortcuts>
